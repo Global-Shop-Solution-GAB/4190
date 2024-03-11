@@ -1,0 +1,356 @@
+Program.Sub.ScreenSU.Start
+Gui.fSeq..Create
+Gui.fSeq..Size(9705,7845)
+Gui.fSeq..MinX(9705)
+Gui.fSeq..MinY(7845)
+Gui.fSeq..Position(0,0)
+Gui.fSeq..BackColor(-2147483633)
+Gui.fSeq..MousePointer(0)
+Gui.fSeq..Caption("Work Order Sequence Viewer")
+Gui.fSeq..Event(UnLoad,fSeq_UnLoad)
+Gui.fSeq.GsGCSeq.Create(GsGridControl)
+Gui.fSeq.GsGCSeq.Size(9450,6330)
+Gui.fSeq.GsGCSeq.Position(75,675)
+Gui.fSeq.GsGCSeq.Event(CellValueChanged,GsGCSeq_CellValueChanged)
+Gui.fSeq.lblWO.Create(Label,"Work Order",True,1035,255,0,90,90,True,0,"Arial",8,-986896,0)
+Gui.fSeq.txtWO.Create(TextBox,"",True,1125,300,0,90,315,True,0,"Arial",8,16436871,1)
+Gui.fSeq.txtWO.Locked(True)
+Gui.fSeq.txtWO.ForeColor(0)
+Gui.fSeq.txtWO.Event(DblClick,txtWO_DblClick)
+Gui.fSeq.cmdWOBrws.Create(Button)
+Gui.fSeq.cmdWOBrws.Size(375,330)
+Gui.fSeq.cmdWOBrws.Position(1245,300)
+Gui.fSeq.cmdWOBrws.Caption("^")
+Gui.fSeq.cmdWOBrws.Event(Click,cmdWOBrws_Click)
+Gui.fSeq.cmdSave.Create(Button)
+Gui.fSeq.cmdSave.Size(855,375)
+Gui.fSeq.cmdSave.Position(75,7065)
+Gui.fSeq.cmdSave.Caption("Save")
+Gui.fSeq.cmdSave.Event(Click,cmdSave_Click)
+Gui.fSeq.cmdPrint.Create(Button)
+Gui.fSeq.cmdPrint.Size(855,375)
+Gui.fSeq.cmdPrint.Position(990,7065)
+Gui.fSeq.cmdPrint.Caption("Print")
+Gui.fSeq.cmdPrint.Event(Click,cmdPrint_Click)
+Gui.fSeq.optView.Create(Option)
+Gui.fSeq.optView.Size(690,255)
+Gui.fSeq.optView.Position(8745,45)
+Gui.fSeq.optView.Caption("View")
+Gui.fSeq.optEdit.Create(Option)
+Gui.fSeq.optEdit.Size(660,255)
+Gui.fSeq.optEdit.Position(8745,330)
+Gui.fSeq.optEdit.Caption("Edit")
+Gui.fSeq.cmdReset.Create(Button)
+Gui.fSeq.cmdReset.Size(855,375)
+Gui.fSeq.cmdReset.Position(1905,7065)
+Gui.fSeq.cmdReset.Caption("Reset")
+Gui.fSeq.cmdReset.ToolTip("This will remove the data above and reassign seqs from Engineering.")
+Gui.fSeq.cmdReset.Event(Click,cmdReset_Click)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+	V.Global.sJob.Declare
+	V.Global.sSuffix.Declare
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+	'This is going to be used by the user to view sequences and have the ability to move them as well on a custom menu item
+	'Wayne Eng.
+	'Quote: 8348
+	'GAP: 4190
+	
+	V.Local.sIcon.Declare
+
+	F.Intrinsic.String.Build("{0}\GAB\GAS\gss2.ico",V.Caller.PluginsDir,v.Local.sIcon)
+	Gui.fSeq..Icon(V.Local.sIcon)
+	
+	F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass,180)
+	F.Intrinsic.Control.CallSub(checktable)
+	F.Intrinsic.Control.CallSub(setanchors)
+	Gui.fSeq.optView.Value(True)
+	Gui.fSeq..Show
+Program.Sub.Main.End
+
+Program.Sub.cmdWOBrws_Click.Start
+	V.Local.sTitle.Declare
+	V.Local.iWidth.Declare
+	V.Local.sRet.Declare
+	V.Local.sTxtWo.Declare
+	
+	Function.Intrinsic.String.Split("Job*!*Suffix*!*Desciption*!*Part*!*Date Due","*!*",V.Local.sTitle)
+	Function.Intrinsic.String.Split("600*!*400*!*1500*!*800*!*600","*!*",V.Local.iWidth)
+	F.Intrinsic.UI.SetBrowserHotTypeAhead(True)
+	Function.Intrinsic.UI.Browser("Select a Job:","con","SELECT JOB,SUFFIX,DESCRIPTION,PART,DATE_DUE FROM V_JOB_HEADER;",V.Local.sTitle,V.Local.iWidth,V.Local.sRet)
+	Function.Intrinsic.Control.If(V.Local.sRet,<>,"***CANCEL***")
+		Function.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+		V.Global.sJob.Set(V.Local.sRet(0))
+		V.Global.sSuffix.Set(V.Local.sRet(1))
+		F.Intrinsic.String.Build("{0}-{1}",V.Global.sJob,V.Global.sSuffix,V.Local.sTxtWo)
+		F.Intrinsic.Control.CallSub(checkseqs)
+		F.Intrinsic.Control.CallSub(loaddtseq)
+		Gui.fSeq.txtWO.Text(V.Local.sTxtWo)
+	Function.Intrinsic.Control.EndIf
+Program.Sub.cmdWOBrws_Click.End
+
+Program.Sub.cmdSave_Click.Start
+	V.Local.sSQL.Declare
+	V.Local.iCnt.Declare
+	
+	F.Intrinsic.Control.If(V.DataTable.dtSave.Exists,=,True)
+		F.Data.DataTable.Close("dtSave")
+	Function.Intrinsic.Control.EndIf
+	
+	
+	Function.Intrinsic.String.Build("SELECT * FROM GAB_4190_SEQ_VIEWER WHERE JOB = '-1';",V.Caller.User,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtSave","con",V.Local.sSQL,True)
+	
+	F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtSeq.RowCount--,1)
+		F.Data.DataTable.AddRow("dtSave","JOB",V.DataTable.dtSeq(V.Local.iCnt).JOB!FieldVal,"SUFFIX",V.DataTable.dtSeq(V.Local.iCnt).SUFFIX!FieldVal,"GSS_SEQ",V.DataTable.dtSeq(V.Local.iCnt).GSS_SEQ!FieldVal,"CFG_SEQ",V.DataTable.dtSeq(V.Local.iCnt).CFG_SEQ!FieldVal)
+	F.Intrinsic.Control.Next(V.Local.iCnt)
+	
+	F.Data.DataTable.SaveToDB("dtSave","con","GAB_4190_SEQ_VIEWER","JOB*!*SUFFIX*!*GSS_SEQ",256)
+	
+	F.Intrinsic.UI.Msgbox("Data Saved","Confirmation")
+Program.Sub.cmdSave_Click.End
+
+Program.Sub.cmdPrint_Click.Start
+	V.Local.sParams.Declare
+	V.Local.sSQL.Declare
+	V.Local.iCnt.Declare
+	
+	F.Intrinsic.Control.If(V.DataTable.dtSave.Exists,=,True)
+		F.Data.DataTable.Close("dtSave")
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("SELECT * FROM GAB_4190_SEQ_VIEWER WHERE JOB = '-1';",V.Caller.User,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtSave","con",V.Local.sSQL,True)
+	
+	F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtSeq.RowCount--,1)
+		F.Data.DataTable.AddRow("dtSave","JOB",V.DataTable.dtSeq(V.Local.iCnt).JOB!FieldVal,"SUFFIX",V.DataTable.dtSeq(V.Local.iCnt).SUFFIX!FieldVal,"GSS_SEQ",V.DataTable.dtSeq(V.Local.iCnt).GSS_SEQ!FieldVal,"CFG_SEQ",V.DataTable.dtSeq(V.Local.iCnt).CFG_SEQ!FieldVal)
+	F.Intrinsic.Control.Next(V.Local.iCnt)
+	
+	F.Data.DataTable.SaveToDB("dtSave","con","GAB_4190_SEQ_VIEWER","JOB*!*SUFFIX*!*GSS_SEQ",256)
+	
+	F.Intrinsic.String.Concat(V.Global.sJob,"!*!",V.Global.sSuffix,"!*!","1811",V.Local.sParams)
+	F.Global.General.CallWrapperSync(900100,V.Local.sParams)
+Program.Sub.cmdPrint_Click.End
+
+Program.Sub.cmdReset_Click.Start
+	V.Local.sParams.Declare
+	V.Local.sSQL.Declare
+	
+	F.Intrinsic.String.Build("DELETE FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}';",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+	F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.String.ConcatCallWrapperArgs(V.Global.sJob,V.Global.sSuffix,"1811",V.Local.sParams)
+	F.Global.General.CallWrapperSync(900100,V.Local.sParams)
+	F.Intrinsic.Control.CallSub(LoadDTSeq)
+Program.Sub.cmdReset_Click.End
+
+Program.Sub.GsGCSeq_CellValueChanged.Start
+	V.Local.iLen.Declare
+	V.Local.sValue.Declare
+	
+	F.Intrinsic.Control.If(V.Args.Column,=,CFG_SEQ)
+		F.Intrinsic.String.Len(V.Args.Value,V.Local.iLen)
+		F.Intrinsic.Control.If(V.Local.iLen,>,6)
+			F.Intrinsic.String.Left(V.Args.Value,6,V.Local.sValue)
+			Gui.fSeq.GsGCSeq.SetCellValue("gvSeq",3,V.Args.RowIndex,V.Local.sValue)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.EndIf
+Program.Sub.GsGCSeq_CellValueChanged.End
+
+Program.Sub.fSeq_UnLoad.Start
+F.ODBC.Connection!con.Close
+F.Intrinsic.Control.End
+
+Program.Sub.fSeq_UnLoad.End
+
+Program.Sub.SetAnchors.Start
+	'0 - None
+	'1 - Top
+	'2 - Bottom
+	'4 - Left
+	'8 - Right
+
+	Gui.fSeq.lblWO.Anchor(5)
+	Gui.fSeq.txtWO.Anchor(5)
+	Gui.fSeq.cmdWOBrws.Anchor(5)
+	Gui.fSeq.cmdSave.Anchor(6)
+	Gui.fSeq.cmdPrint.Anchor(6)
+	Gui.fSeq.cmdReset.Anchor(6)
+	Gui.fSeq.optView.Anchor(9)
+	Gui.fSeq.optEdit.Anchor(9)
+	Gui.fSeq.GsGCSeq.Anchor(15)
+Program.Sub.SetAnchors.End
+
+Program.Sub.LoadDTSeq.Start
+	V.Local.sSQL.Declare
+	
+	F.Intrinsic.Control.If(V.DataTable.dtSeq.Exists,=,True)
+		F.Data.DataTable.Close("dtSeq")
+	Function.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("SELECT A.JOB,A.SUFFIX,A.GSS_SEQ,A.CFG_SEQ,B.PART,B.DESCRIPTION FROM GAB_4190_SEQ_VIEWER A LEFT JOIN V_JOB_OPERATIONS B ON A.JOB = B.JOB AND A.SUFFIX = B.SUFFIX AND A.GSS_SEQ = B.SEQ WHERE A.JOB = '{0}' AND A.SUFFIX = '{1}' ORDER BY CFG_SEQ;",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+	F.Data.DataTable.CreateFromSQL("dtSeq","con",V.Local.sSQL,True)
+	
+	F.Intrinsic.Control.CallSub(loaddvgvseq)
+Program.Sub.LoadDTSeq.End
+
+Program.Sub.LoadDVGVSeq.Start
+	V.Local.iRet.Declare
+	V.Local.iCnt.Declare
+	
+	F.Data.DataView.Create("dtSeq","dvSeq")
+	
+	Gui.fSeq.GsGCSeq.AddGridViewFromDataView("gvSeq","dtSeq","dvSeq")
+	Gui.fSeq.GsGCSeq.SetGridViewProperty("gvSeq","multiselect",True)
+	Gui.fSeq.GsGCSeq.SetGridViewProperty("gvSeq","AllowSort",True)
+	Gui.fSeq.GsGCSeq.SetGridViewProperty("gvSeq","AllowFilter",True)
+	Gui.fSeq.GsGCSeq.SetGridViewProperty("gvSeq","showdetailtabs",False)
+	Gui.fSeq.GsGCSeq.SetGridViewProperty("gvSeq","showgrouppanel",False)
+	
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","JOB","Visible",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","SUFFIX","Visible",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","Caption","GSS Seq")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","Caption","Config. Seq")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","PART","Caption","Part ")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","DESCRIPTION","Caption","Description ")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","AllowEdit",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","AllowEdit",True)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","PART","AllowEdit",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","DESCRIPTION","AllowEdit",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","ReadOnly",True)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","ReadOnly",False)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","PART","ReadOnly",True)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","DESCRIPTION","ReadOnly",True)
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","Width","20")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","Width","20")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","PART","Width","35")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","HeaderHAlignment","Center")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","HeaderHAlignment","Center")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","GSS_SEQ","CellHAlignment","Center")
+	Gui.fSeq.GsGCSeq.SetColumnProperty("gvSeq","CFG_SEQ","CellHAlignment","Center")
+	
+	F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtSeq.RowCount--,1)
+		F.Intrinsic.Math.Mod(V.Local.iCnt,2,V.Local.iRet)
+		F.Intrinsic.Control.If(V.Local.iRet,=,0)
+			Gui.fSeq.GsGCSeq.SetRowAppearance("gvSeq",V.Local.iCnt,"BackColor","AliceBlue")
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iCnt)
+	
+	Gui.fSeq.GsGCSeq.MainView("gvSeq")
+Program.Sub.LoadDVGVSeq.End
+
+Program.Sub.CheckSeqs.Start
+	V.Local.sSQL.Declare
+	V.Local.iCnt.Declare
+	
+	F.Intrinsic.Control.If(V.DataTable.dtCheck.Exists,=,True)
+		F.Data.DataTable.Close("dtCheck")
+		F.Data.DataTable.Close("dtCheck2")
+		F.Data.Dictionary.Close("dicCheck")
+		F.Data.Dictionary.Close("dicCheck2")
+	Function.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("SELECT COUNT(*) FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}';",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+	F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSQL,V.Local.iCnt)
+	F.Intrinsic.Control.If(V.Local.iCnt,<>,0)
+		F.Intrinsic.String.Build("SELECT JOB,SUFFIX,SEQ FROM V_JOB_OPERATIONS WHERE JOB = '{0}' AND SUFFIX = '{1}' AND LMO = 'M' AND SEQ <> '995000' ORDER BY SEQ;",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+		F.Data.DataTable.CreateFromSQL("dtCheck","con",V.Local.sSQL,True)
+		F.Data.DataTable.AddColumn("dtCheck","Check",Boolean)
+		
+		F.Intrinsic.String.Build("SELECT GSS_SEQ,CONVERT(1,SQL_BIT) AS VALUE FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}' ORDER BY GSS_SEQ;",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+		F.Data.Dictionary.CreateFromSQL("dicCheck","con",V.Local.sSQL)
+		F.Data.Dictionary.SetDefaultReturn("dicCheck",False)
+		
+		F.Data.DataTable.FillFromDictionary("dtCheck","dicCheck","SEQ","Check")
+		
+		F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtCheck.RowCount--,1)
+			F.Intrinsic.Control.If(V.DataTable.dtCheck(V.Local.iCnt).Check!FieldVal,=,False)
+				F.ODBC.Connection!con.OpenRecordsetRW("rstCheck","SELECT * FROM GAB_4190_SEQ_VIEWER;")
+					F.ODBC.con!rstCheck.AddNew
+						F.ODBC.con!rstCheck.Set!JOB(V.DataTable.dtCheck(V.Local.iCnt).JOB!FieldVal)
+						F.ODBC.con!rstCheck.Set!SUFFIX(V.DataTable.dtCheck(V.Local.iCnt).SUFFIX!FieldVal)
+						F.ODBC.con!rstCheck.Set!GSS_SEQ(V.DataTable.dtCheck(V.Local.iCnt).SEQ!FieldVal)
+						F.ODBC.con!rstCheck.Set!CFG_SEQ("000000")
+					F.ODBC.con!rstCheck.Update
+				F.ODBC.con!rstCheck.Close
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Next(V.Local.iCnt)
+		
+		F.Intrinsic.String.Build("SELECT JOB,SUFFIX,GSS_SEQ FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}' ORDER BY GSS_SEQ;",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)
+		F.Data.DataTable.CreateFromSQL("dtCheck2","con",V.Local.sSQL,True)
+		F.Data.DataTable.AddColumn("dtCheck2","Check",Boolean)
+		
+		F.Intrinsic.String.Build("SELECT SEQ,CONVERT(1,SQL_BIT) AS VALUE FROM V_JOB_OPERATIONS WHERE JOB = '{0}' AND SUFFIX = '{1}' AND LMO = 'M' AND SEQ <> '995000' ORDER BY SEQ;",V.Global.sJob,V.Global.sSuffix,V.Local.sSQL)		
+		F.Data.Dictionary.CreateFromSQL("dicCheck2","con",V.Local.sSQL)
+		F.Data.Dictionary.SetDefaultReturn("dicCheck2",False)
+		
+		F.Data.DataTable.FillFromDictionary("dtCheck2","dicCheck2","GSS_SEQ","Check")
+
+		F.Intrinsic.Control.For(V.Local.iCnt,0,V.DataTable.dtCheck2.RowCount--,1)
+			F.Intrinsic.Control.If(V.DataTable.dtCheck2(V.Local.iCnt).Check!FieldVal,=,False)
+				Function.Intrinsic.String.Build("DELETE FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}' AND GSS_SEQ = '{2}';",V.DataTable.dtCheck2(V.Local.iCnt).JOB!FieldVal,V.DataTable.dtCheck2(V.Local.iCnt).SUFFIX!FieldVal,V.DataTable.dtCheck2(V.Local.iCnt).GSS_SEQ!FieldVal,V.Local.sSQL)
+				F.ODBC.Connection!con.Execute(v.Local.sSQL)
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.Next(V.Local.iCnt)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.UI.Msgbox("Please print the report and reselect work order to view sequences.","Message")
+'		f.Intrinsic.Control.CallSub(fseq_unload)
+	F.Intrinsic.Control.EndIf
+Program.Sub.CheckSeqs.End
+
+Program.Sub.txtWO_DblClick.Start
+	V.Local.sParams.Declare
+	
+	Function.Intrinsic.Control.If(V.Screen.fSeq!txtWO.Text,<>,"")
+		F.Intrinsic.Control.CallSub(disablecontrols)
+		Function.Intrinsic.Control.If(V.Screen.fSeq!optView.Value,=,True)
+			F.Intrinsic.String.Concat("7","!*!",V.Global.sJob,"!*!",V.Global.sSuffix,"!*!","A",V.Local.sParams)
+			F.Global.General.CallWrapperSync(450000,V.Local.sParams)
+		Function.Intrinsic.Control.Else
+			F.Intrinsic.String.Build("{0}!*!{1}!*!O",V.Global.sJob,V.Global.sSuffix,V.Local.sParams)
+			F.Global.General.CallWrapperSync(2009,V.Local.sParams)
+			F.Intrinsic.Control.CallSub(checkseqs)
+			F.Intrinsic.Control.CallSub(loaddtseq)
+		Function.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.CallSub(enablecontrols)
+	Function.Intrinsic.Control.EndIf
+Program.Sub.txtWO_DblClick.End
+
+Program.Sub.DisableControls.Start
+	Gui.fSeq.txtWO.Enabled(False)
+	Gui.fSeq.cmdWOBrws.Enabled(False)
+	Gui.fSeq.cmdSave.Enabled(False)
+	Gui.fSeq.cmdPrint.Enabled(False)
+	Gui.fSeq.optView.Enabled(False)
+	Gui.fSeq.optEdit.Enabled(False)
+	Gui.fSeq.GsGCSeq.Enabled(False)
+Program.Sub.DisableControls.End
+
+Program.Sub.EnableControls.Start
+	Gui.fSeq.txtWO.Enabled(True)
+	Gui.fSeq.cmdWOBrws.Enabled(True)
+	Gui.fSeq.cmdSave.Enabled(True)
+	Gui.fSeq.cmdPrint.Enabled(True)
+	Gui.fSeq.optView.Enabled(True)
+	Gui.fSeq.optEdit.Enabled(True)
+	Gui.fSeq.GsGCSeq.Enabled(True)
+Program.Sub.EnableControls.End
+
+Program.Sub.CheckTable.Start
+	V.Local.sSql.Declare
+	V.Local.btableExists.Declare
+	
+	F.ODBC.Connection!con.TableExists("GAB_4190_SEQ_VIEWER",V.Local.btableExists)
+	F.Intrinsic.Control.If(V.Local.btableExists,=,False)
+		F.ODBC.Connection!con.Execute("CREATE TABLE GAB_4190_SEQ_VIEWER(JOB CHAR(6),SUFFIX CHAR(3),GSS_SEQ CHAR(6),CFG_SEQ CHAR(6));")
+		F.ODBC.Connection!con.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER1 USING 1 ON GAB_4190_SEQ_VIEWER(JOB);")
+		F.ODBC.Connection!con.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER2 USING 2 ON GAB_4190_SEQ_VIEWER(SUFFIX);")
+		F.ODBC.Connection!con.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER3 USING 3 ON GAB_4190_SEQ_VIEWER(GSS_SEQ);")
+	F.Intrinsic.Control.EndIf
+Program.Sub.CheckTable.End
+
+Program.Sub.Comments.Start
+${$0$}$GAB_4190_GSS_CFG_Viewer$}$AGV$}$08/17/2016 9:00:36 AM$}$False
+Program.Sub.Comments.End
