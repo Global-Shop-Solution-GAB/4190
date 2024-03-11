@@ -1,0 +1,122 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+'PRE PROC FOR SF_BARCODEWO_EXT  --  REPORT ID: 1811
+'HOOK 16090 - Must run Synchronously
+'*************CONFIGURATOR MUST BE USED IN ORDER FOR THIS TO WORK CORRECTLY*************
+
+V.Global.sTerminal.Declare
+V.Global.sJob.Declare
+
+F.Intrinsic.Control.If(V.Passed.009001,=,"001811")
+	F.Intrinsic.Control.CallSub(get_wo)
+F.Intrinsic.Control.Else
+	F.Intrinsic.Control.End
+
+F.Intrinsic.Control.EndIf
+Program.Sub.Main.End
+
+Program.Sub.get_wo.Start
+V.Local.sSQL.Declare
+V.Local.iCnt.Declare
+
+F.Intrinsic.Control.CallSub(create_table)
+
+V.Global.sTerminal.Set(V.Caller.Terminal)
+'GET THE DISTINCT LIST OF JOB/SUFFIX NUMBERS THE USER SELECTED
+F.Intrinsic.String.Build("SELECT DISTINCT JOB, SUFFIX FROM BI_BAR_DETAIL WHERE TERMINAL = '{0}';",V.Global.sTerminal,V.Local.sSQL)
+F.ODBC.Connection!con.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass,180)
+F.ODBC.Connection!con.OpenLocalRecordsetRO("RST",V.Local.sSQL)
+F.Intrinsic.String.Build("DELETE FROM GAB_4190_BI_BAR_DTL WHERE TERMINAL = '{0}';",V.Global.sTerminal,V.Local.sSQL)
+F.ODBC.Connection!con.Execute(V.Local.sSQL)
+
+'LOOP THROUGH THE RECORDSET AND EXECUTE THE SQL STATEMENTS THAT WILL COPY BI_BAR_DETAIL TO THE CUSTOM TABLE GAB_4190_BI_BAR_DTL
+'IT DELETES THE COPIED RECORDS FROM THE BI_BAR_DETAIL TABLE SO THAT THEY CAN BE COPIED BACK ONCE MANIPULATION IS COMPLETE
+'IT THEN LOOKS AT WHAT THE SEQUENCE NUMBER IS IN THE CONFIGURATOR TABLE AND MAKES THAT THE SEQUENCE NUMBER FOR THAT SEQUENCE IN THE BI TABLE.  IT SHOULD ONLY BE CHANGING MANUFACTURED
+'TO JOB PARTS FROM 99XXXX TO THE SEQUENCE NUMBER LISTED IN THE CONFIG TABLE.
+F.Intrinsic.Control.DoUntil(V.ODBC.con!RST.EOF,=,True)
+	F.ODBC.con!RST.Record2String(V.Global.sJob)
+	F.Intrinsic.String.Split(V.Global.sJob,"*!*",V.Global.sJob)
+	F.ODBC.con!RST.MoveNext
+	F.Intrinsic.String.Build("INSERT INTO GAB_4190_BI_BAR_DTL SELECT * FROM BI_BAR_DETAIL WHERE TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+	F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.String.Build("DELETE FROM BI_BAR_DETAIL WHERE TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+	F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	
+	F.Intrinsic.String.Build("SELECT COUNT(*) FROM GAB_4190_SEQ_VIEWER WHERE JOB = '{0}' AND SUFFIX = '{1}';",V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+	F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSQL,V.Local.iCnt)
+	F.Intrinsic.Control.If(V.Local.iCnt,<>,0)
+		F.Intrinsic.String.Build("UPDATE GAB_4190_BI_BAR_DTL SET A.ROUTER_SEQ = B.CFG_SEQ FROM GAB_4190_BI_BAR_DTL A JOIN GAB_4190_SEQ_VIEWER B ON A.JOB = B.JOB AND A.SUFFIX = B.SUFFIX AND A.ROUTER_SEQ = B.GSS_SEQ WHERE A.LMO = 'M' AND A.TERMINAL = '{0}' AND A.JOB = '{1}' AND A.SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		Function.Intrinsic.String.Build("INSERT INTO BI_BAR_DETAIL SELECT * FROM GAB_4190_BI_BAR_DTL WHERE TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.Control.Else	
+		F.Intrinsic.String.Build("UPDATE GAB_4190_BI_BAR_DTL SET BBD.ROUTER_SEQ = CM.ROUTER_SEQUENCE FROM GAB_4190_BI_BAR_DTL BBD JOIN ORDER_TO_WO OTW ON OTW.JOB = BBD.JOB AND OTW.SUFFIX = BBD.SUFFIX JOIN ORDER_CONFIG OC ON OC.ORDER_NO = OTW.ORDER_NO AND OC.ORDER_LINE = OTW.ORDER_LINE JOIN CONFIG_MFG CM ON CM.BASE_ID = OC.BASE_ID AND OC.ID_NUM = REPLACE(LTRIM(REPLACE(CM.ID_NUM, '0', ' ')),' ', '0') WHERE BBD.PWC = CM.PART_FRAG AND CM.LMO = 'M' AND BBD.TERMINAL = '{0}' AND BBD.JOB = '{1}' AND BBD.SUFFIX = '{2}' AND BBD.LMO = 'M' AND ROUTER_SEQ >= '990000';",V.Global.sTerminal,V.Global.sJob(0),V.Global.sJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.String.Build("SELECT COUNT(*) FROM GAB_4190_BI_BAR_DTL WHERE TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}' AND LMO = 'M' AND ROUTER_SEQ >= '990000';",V.Global.sTerminal,V.Global.sJob(0),V.Global.sJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.ExecuteAndReturn(V.Local.sSQL,V.Local.iCnt)
+		F.Intrinsic.Control.If(V.Local.iCnt,<>,0)
+			F.Intrinsic.String.Build("UPDATE GAB_4190_BI_BAR_DTL SET BBD.ROUTER_SEQ = CM.ROUTER_SEQUENCE FROM GAB_4190_BI_BAR_DTL BBD JOIN ORDER_TO_WO OTW ON OTW.JOB = BBD.JOB AND OTW.SUFFIX = BBD.SUFFIX JOIN ORDER_CONFIG OC ON OC.ORDER_NO = OTW.ORDER_NO AND OC.ORDER_LINE = OTW.ORDER_LINE JOIN CONFIG_MFG CM ON CM.BASE_ID = OC.BASE_ID AND OC.IDENTIFIER = CM.IDENTIFIER WHERE BBD.PWC = CM.PART_FRAG AND CM.LMO = 'M' AND BBD.TERMINAL = '{0}' AND BBD.JOB = '{1}' AND BBD.SUFFIX = '{2}' AND BBD.LMO = 'M' AND ROUTER_SEQ >= '990000';",V.Global.sTerminal,V.Global.sJob(0),V.Global.sJob(1),V.Local.sSQL)
+			F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.Control.EndIf
+		'INSERTS THE MANIPULATED DATA BACK INTO THE BI_BAR_DETAIL TABLE AND DELETES THE RECORDS FROM THE GAB_4190_BI_BAR_DTL CUSTOM TABLE
+		Function.Intrinsic.String.Build("INSERT INTO BI_BAR_DETAIL SELECT * FROM GAB_4190_BI_BAR_DTL WHERE TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+		F.Intrinsic.String.Build("INSERT INTO GAB_4190_SEQ_VIEWER SELECT JOB,SUFFIX,RTRIM(REPLACE(BC_SEQ,'*','')),ROUTER_SEQ FROM BI_BAR_DETAIL WHERE LMO = 'M' AND TERMINAL = '{0}' AND JOB = '{1}' AND SUFFIX = '{2}';",V.Global.sTerminal,V.Global.SJob(0),V.Global.SJob(1),V.Local.sSQL)
+		F.ODBC.Connection!con.Execute(V.Local.sSQL)
+	F.Intrinsic.Control.EndIf
+	
+	F.Intrinsic.String.Build("DELETE FROM GAB_4190_BI_BAR_DTL WHERE TERMINAL = '{0}';",V.Global.sTerminal,V.Local.sSQL)
+	F.ODBC.Connection!con.Execute(V.Local.sSQL)
+F.Intrinsic.Control.Loop
+
+F.ODBC.Connection!con.Close
+
+Program.Sub.get_wo.End
+
+Program.Sub.create_table.Start
+'CHECK TO SEE IF CUSTOM TABLE GAB_4190_BI_BAR_DTL AND GAB_4190_SEQ_VIEWER EXISTS.  IF NOT, CREATE THEM.GAB_4190_SEQ_VIEWER
+
+V.Local.sSql.Declare
+V.Local.btableExists.Declare
+
+F.ODBC.Connection!contable.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.ODBC.Connection!contable.TableExists("GAB_4190_BI_BAR_DTL",V.Local.btableExists)
+F.Intrinsic.Control.If(V.Local.btableExists,=,False)
+	V.Local.sSql.Set("CREATE TABLE GAB_4190_BI_BAR_DTL(TERMINAL CHAR(3), RPTID CHAR(6), JOB CHAR(6), SUFFIX CHAR(3), COPY_NO CHAR(1), KEY_SEQ CHAR(9), ROUTER_SEQ CHAR(6), LMO CHAR(1), BC_SEQ CHAR(8), BC_PWC CHAR(22), START_DATE CHAR(6), DUE_DATE CHAR(6), PWC CHAR(23), EXTRA_DESC CHAR(60), UM CHAR(2), SETUP NUMERIC(11,4),")
+	F.Intrinsic.String.Concat(V.Local.sSql," RUNTIME NUMERIC(11,4), LABOR_TOTAL NUMERIC(11,4), UNIT NUMERIC(12,4), MATL_TOTAL NUMERIC(12,4), MACH CHAR(4), COMMITTED_UNITS NUMERIC(10,2), COMMITTED_DOLLARS NUMERIC(10,2), BURDEN NUMERIC(12,4), ACT_HRS NUMERIC(12,4), EST_DLRS NUMERIC(10,2), ACT_DLRS NUMERIC(10,2), WC_FACTOR NUMERIC(2,0), PROJ_GROUP CHAR(6),",V.local.sSql)
+	F.Intrinsic.String.Concat(V.Local.sSql," OPER_SORT_CODE CHAR(20), CREW_SIZE NUMERIC(8,4), FREQUENT NUMERIC(6,0), PREV_CLSD CHAR(1), MAIN_COMMENT CHAR(1), LEAD_TIME NUMERIC(4,0), MINIMUM_FLAG CHAR(1), MINIMUM NUMERIC(10,2), TOOLING_SEQ CHAR(1), HOLD_PO CHAR(1), WC_NAME CHAR(20), PARTNO CHAR(20), REC_TYPE CHAR(2), WO_USER_FLD CHAR(70), SERIAL_NUMBER CHAR(30),",V.local.sSql)
+	F.Intrinsic.String.Concat(V.Local.sSql," PWC_PART CHAR(20), FILLER50 CHAR(96));",V.local.sSql)
+	F.ODBC.Connection!contable.Execute(V.Local.sSql)
+F.Intrinsic.Control.EndIf
+
+F.ODBC.Connection!contable.TableExists("GAB_4190_SEQ_VIEWER",V.Local.btableExists)
+F.Intrinsic.Control.If(V.Local.btableExists,=,False)
+	F.ODBC.Connection!contable.Execute("CREATE TABLE GAB_4190_SEQ_VIEWER(JOB CHAR(6),SUFFIX CHAR(3),GSS_SEQ CHAR(6),CFG_SEQ CHAR(6));")
+	F.ODBC.Connection!contable.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER1 USING 1 ON GAB_4190_SEQ_VIEWER(JOB);")
+	F.ODBC.Connection!contable.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER2 USING 2 ON GAB_4190_SEQ_VIEWER(SUFFIX);")
+	F.ODBC.Connection!contable.Execute("CREATE INDEX GAB_4190_SEQ_VIEWER3 USING 3 ON GAB_4190_SEQ_VIEWER(GSS_SEQ);")
+F.Intrinsic.Control.EndIf
+
+F.Intrinsic.Control.ExitSub
+Program.Sub.create_table.End
+
+Program.Sub.Comments.Start
+${$0$}$GAB_4190_BC_WO_PreProc_Save$}$AGV$}$04/29/2016$}$False
+${$3$}$0$}$$}$-1$}$-1$}$$}$01/01/1900$}$THIS IS A PRE PROCESSOR SCRIPT FOR THE BARCODE WORK ORDER EXTENDED REPORT.
+
+THIS SCRIPT REQUIRES THE USER TO BE USING THE CONFIGURATOR AND THAT THE PARTS BUILT IN THE CONFIGURATOR HAVE TO HAVE SEQUENCE NUMBERS ASSIGNED TO THEM.
+
+IT WILL TAKE THE DATA FROM THE BI_BAR_DETAIL TABLE AND WRITE IT TO A NEW TABLE CALLED GAB_4190_BI_BAR_DTL.
+
+IT WILL MANIPULATE THE DATA SO THAT THE MANUFACTURED TO JOB PARTS, WILL HAVE THEIR MATERIAL SEQUENCE NUMBER CHANGED FROM A '99XXXX' VALUE, TO THE SEQUENCE ASSIGNED TO THAT PART NUMBER DURING THE CONFIGURATOR PROCESS.
+
+THIS WILL CAUSE THE MANUFACTURED TO JOB COMPONENTS TO BE LISTED IN THE LOCATION ON THE ROUTER WHERE THEY WILL BE REQUIRED FOR ASSEMBLY AS DESIGNATED BY THE ASSIGNED SEQUENCE IN THE CONFIGURATOR.
+Program.Sub.Comments.End
+
